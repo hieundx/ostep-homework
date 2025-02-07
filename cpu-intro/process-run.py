@@ -14,12 +14,12 @@ def random_seed(seed):
     return
 
 # process switch behavior
-SCHED_SWITCH_ON_IO = 'SWITCH_ON_IO'
-SCHED_SWITCH_ON_END = 'SWITCH_ON_END'
+SCHED_SWITCH_ON_IO = 'SWITCH_ON_IO' # run other ready processes when an IO is issued
+SCHED_SWITCH_ON_END = 'SWITCH_ON_END' # wait until current process's IO is done
 
 # io finished behavior
-IO_RUN_LATER = 'IO_RUN_LATER'
-IO_RUN_IMMEDIATE = 'IO_RUN_IMMEDIATE'
+IO_RUN_LATER = 'IO_RUN_LATER' # run other processes after IO is done
+IO_RUN_IMMEDIATE = 'IO_RUN_IMMEDIATE' # run the next instruction in the current process after IO is done
 
 # process states
 STATE_RUNNING = 'RUNNING'
@@ -36,12 +36,27 @@ PROC_STATE = 'proc_state_'
 # things a process can do
 DO_COMPUTE = 'cpu'
 DO_IO = 'io'
-DO_IO_DONE = 'io_done'
 
 
 class scheduler:
+  
     def __init__(self, process_switch_behavior, io_done_behavior, io_length):
+        """
+        Initializes the ProcessRun object.
+
+        Args:
+            process_switch_behavior (str): The behavior of the process switch. Default: SWITCH_ON_IO.
+            io_done_behavior (str): The behavior when I/O is done. Default: IO_RUN_LATER.
+            io_length (int): The length of the I/O operation. Default: 5.
+
+        Attributes:
+            proc_info (dict): A dictionary to keep the set of instructions for each of the processes.
+            process_switch_behavior (str): The behavior of the process switch.
+            io_done_behavior (str): The behavior when I/O is done.
+            io_length (int): The length of the I/O operation.
+        """
         # keep set of instructions for each of the processes
+    
         self.proc_info = {}
         self.process_switch_behavior = process_switch_behavior
         self.io_done_behavior = io_done_behavior
@@ -49,36 +64,75 @@ class scheduler:
         return
 
     def new_process(self):
+        # proc_id is 0-indexed, so the next one is the length of the dictionary
         proc_id = len(self.proc_info)
+        """
+        Example:
+        {
+            0: {
+                'pc_': 1,                       # program counter has advanced to index 1
+                'pid_': 0,                      # process id is 0
+                'code_': ['cpu', 'io', 'io_done', 'cpu'],  # list of instructions remaining/loaded
+                'proc_state_': 'RUNNING'        # current state is running
+            },
+            1: {
+                'pc_': 0,                       # process counter is at the beginning
+                'pid_': 1,                      # process id is 1
+                'code_': ['cpu', 'cpu'],         # list of instructions loaded
+                'proc_state_': 'READY'          # state is ready but not yet running
+            }
+        }
+        """
         self.proc_info[proc_id] = {}
-        self.proc_info[proc_id][PROC_PC] = 0
+        self.proc_info[proc_id][PROC_PC] = 0 # Unused, but why?
         self.proc_info[proc_id][PROC_ID] = proc_id
         self.proc_info[proc_id][PROC_CODE] = []
         self.proc_info[proc_id][PROC_STATE] = STATE_READY
         return proc_id
 
-    # program looks like this:
-    #   c7,i,c1,i
-    # which means
-    #   compute for 7, then i/o, then compute for 1, then i/o
     def load_program(self, program):
+        """
+        Loads a program into the process's instruction set.
+        The program is a string where each instruction is separated by a comma.
+        Each instruction starts with an opcode ('c' for compute or 'i' for I/O)
+        followed by a number indicating the duration or count.
+        Args:
+            program (str): A string representing the program instructions.
+                   Example: 'c5,i,c3' where 'c5' means compute for 5 cycles,
+                   'i' means perform I/O, and 'c3' means compute for 3 cycles.
+                   IO duration is defined by the self.io_length attribute.
+        Returns:
+            None
+        """
+        
         proc_id = self.new_process()
         for line in program.split(','):
-            opcode = line[0]
+            opcode = line[0] # opcode, e.g. 'c5' -> 'c', 'i' -> 'i'
+            
             if opcode == 'c': # compute
-                num = int(line[1:])
-                for i in range(num):
+                num = int(line[1:]) # second character onwards is the duration, e.g. 'c5' -> 5
+                for i in range(num): # add `num` compute instructions to the process
                     self.proc_info[proc_id][PROC_CODE].append(DO_COMPUTE)
-            elif opcode == 'i':
-                self.proc_info[proc_id][PROC_CODE].append(DO_IO)
-                # add one compute to HANDLE the I/O completion
-                self.proc_info[proc_id][PROC_CODE].append(DO_IO_DONE)
+            elif opcode == 'i': # I/O
+                self.proc_info[proc_id][PROC_CODE].append(DO_IO) # add an I/O instruction
             else:
                 print('bad opcode %s (should be c or i)' % opcode)
                 exit(1)
         return
 
     def load(self, program_description):
+        """
+        Load a program into the process table.
+        Args:
+            program_description (str): A string describing the program in the format 'X:Y',
+                                       where X is the number of instructions and Y is the 
+                                       percent chance that an instruction is CPU-bound (as opposed to IO-bound).
+        Raises:
+            SystemExit: If the program description is not in the correct format.
+        Returns:
+            None
+        """
+        
         proc_id = self.new_process()
         tmp = program_description.split(':')
         if len(tmp) != 2:
@@ -88,13 +142,13 @@ class scheduler:
             exit(1)
 
         num_instructions, chance_cpu = int(tmp[0]), float(tmp[1])/100.0
+        
+        # Add cpu or io instructions based on the chance_cpu
         for i in range(num_instructions):
             if random.random() < chance_cpu:
                 self.proc_info[proc_id][PROC_CODE].append(DO_COMPUTE)
             else:
                 self.proc_info[proc_id][PROC_CODE].append(DO_IO)
-                # add one compute to HANDLE the I/O completion
-                self.proc_info[proc_id][PROC_CODE].append(DO_IO_DONE)
         return
 
     def move_to_ready(self, expected, pid=-1):
@@ -119,16 +173,26 @@ class scheduler:
         self.proc_info[self.curr_proc][PROC_STATE] = STATE_DONE
         return
 
+
     def next_proc(self, pid=-1):
+        """
+        Move to the next process and set its state from ready to running.
+        """
+        
+        # if pid is not provided, use the current process
         if pid != -1:
             self.curr_proc = pid
             self.move_to_running(STATE_READY)
             return
+        
+        # if pid is not provided, find the first process in the ready state in a circular manner
+        # 1st loop looks for the next process in the list
         for pid in range(self.curr_proc + 1, len(self.proc_info)):
             if self.proc_info[pid][PROC_STATE] == STATE_READY:
                 self.curr_proc = pid
                 self.move_to_running(STATE_READY)
                 return
+        # 2nd loop looks for the process from the beginning of the list
         for pid in range(0, self.curr_proc + 1):
             if self.proc_info[pid][PROC_STATE] == STATE_READY:
                 self.curr_proc = pid
@@ -161,9 +225,17 @@ class scheduler:
         return num_active
 
     def get_ios_in_flight(self, current_time):
+        """
+            Returns the number of IOs in flight at the current time.
+            current_time (int): The current clock tick.
+            
+            Loop through all processes and check if current time is before the IO finish time.
+            If it is, increment the number of IOs in flight.
+        """
+        
         num_in_flight = 0
         for pid in range(len(self.proc_info)):
-            for t in self.io_finish_times[pid]:
+            for t in self.io_finish_times[pid]: 
                 if t > current_time:
                     num_in_flight += 1
         return num_in_flight
