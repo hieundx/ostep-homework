@@ -36,7 +36,7 @@ PROC_STATE = 'proc_state_'
 # things a process can do
 DO_COMPUTE = 'cpu'
 DO_IO = 'io'
-
+DO_IO_DONE = 'io_done'
 
 class scheduler:
   
@@ -115,6 +115,7 @@ class scheduler:
                     self.proc_info[proc_id][PROC_CODE].append(DO_COMPUTE)
             elif opcode == 'i': # I/O
                 self.proc_info[proc_id][PROC_CODE].append(DO_IO) # add an I/O instruction
+                self.proc_info[proc_id][PROC_CODE].append(DO_IO_DONE)
             else:
                 print('bad opcode %s (should be c or i)' % opcode)
                 exit(1)
@@ -149,6 +150,8 @@ class scheduler:
                 self.proc_info[proc_id][PROC_CODE].append(DO_COMPUTE)
             else:
                 self.proc_info[proc_id][PROC_CODE].append(DO_IO)
+                # add one compute to HANDLE the I/O completion
+                self.proc_info[proc_id][PROC_CODE].append(DO_IO_DONE)
         return
 
     def move_to_ready(self, expected, pid=-1):
@@ -292,6 +295,8 @@ class scheduler:
                     self.move_to_ready(STATE_WAIT, pid)
                     if self.io_done_behavior == IO_RUN_IMMEDIATE:
                         # IO_RUN_IMMEDIATE
+                        # This means that an IO has finished and that process wants to handle the IO completion immediately
+                        # so we pause the current process and switch to the process that issued the IO
                         if self.curr_proc != pid:
                             if self.proc_info[self.curr_proc][PROC_STATE] == STATE_RUNNING:
                                 self.move_to_ready(STATE_RUNNING)
