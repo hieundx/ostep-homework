@@ -30,4 +30,16 @@ int main() {
     close(fd);
     time_e = timestamp_ms();
     printf("close() took: %ld (ms)\n", time_e - time_s);
+
+    double total_ms = 0;
+    int num_calls = 1000000;
+
+    for(int i = 0; i < num_calls; i++) {
+        time_s = timestamp_ms();
+        getpid();
+        time_e = timestamp_ms();
+        total_ms = total_ms + time_e - time_s;
+    }
+
+    printf("getpid() took %.2f (ms) on average\n", total_ms/num_calls);
 }
